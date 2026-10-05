@@ -1,3 +1,4 @@
+
 from dataclasses import dataclass
 from typing import Optional
 from utils.rng import RNG
@@ -10,13 +11,11 @@ class TempSensor:
     rng: Optional[RNG] = None
 
     def read(self, true_temp: float) -> Optional[float]:
-        ''' Simulate a temperature sensor reading with Gaussian noise, bias, and dropout.
-            true_temp: The actual temperature to be measured.
-            Returns the noisy temperature reading, or None if the sensor drops out.
-        '''
         if self.rng is None:
             raise ValueError("TempSensor requires a RNG")
+
         if self.rng.bernoulli(self.dropout_prob):
             return None
+
         noisy = true_temp + self.bias + self.rng.gauss(0.0, self.sigma)
         return noisy

@@ -1,8 +1,10 @@
+import csv
 import os
+import statistics
 import time
 from typing import Dict, List, Optional
 
-from utils.config import load_config
+from utils.config import Config, load_config
 from utils.rng import RNG
 from sensors.temp_sensor import TempSensor
 from sensors.filters import hold_last, MovingAverageFilter
@@ -12,9 +14,8 @@ from simulations.room_model import step_room
 from simulations.environment import Environment
 from plotting.plots import plot_timeseries, plot_error, plot_duty, plot_predictive, plot_heater
 
-def run_scenario(scenario_path: str):
-    scenario = load_config(scenario_path)
-    rng = RNG(scenario.sim.seed)
+def _simulate(scenario: Config, seed: int) -> tuple[Dict[str, List[float]], bool]:
+    rng = RNG(seed)
 
     env = Environment(
         base=scenario.env.base,
@@ -96,7 +97,14 @@ def run_scenario(scenario_path: str):
         T = step_room(T, heater, T_out, scenario.model.R, scenario.model.C, scenario.model.P,
                       dt, scenario.model.process_sigma, rng)
 
-    # Write CSV
+    return log, use_predictive
+
+
+def run_scenario(scenario_path: str):
+    scenario = load_config(scenario_path)
+    log, use_predictive = _simulate(scenario, scenario.sim.seed)
+
+    # Write CSV and plots for the single-run workflow.
     ts = time.strftime("%Y%m%d-%H%M%S")
     base = os.path.splitext(os.path.basename(scenario_path))[0]
     log_dir = os.path.join("outputs","logs")
@@ -121,3 +129,76 @@ def run_scenario(scenario_path: str):
 
     print(f"Wrote log to {csv_path}")
     print(f"Figures saved to {fig_dir}")
+
+
+def _percentile(values: List[float], percentile: float) -> float:
+    ordered = sorted(values)
+    position = (len(ordered) - 1) * percentile / 100
+    lower_index = int(position)
+    upper_index = min(lower_index + 1, len(ordered) - 1)
+    fraction = position - lower_index
+    return ordered[lower_index] + (ordered[upper_index] - ordered[lower_index]) * fraction
+
+
+def run_monte_carlo(scenario_path: str, n_runs: int = 100):
+    if n_runs < 1:
+        raise ValueError("n_runs must be at least 1")
+
+    scenario = load_config(scenario_path)
+    run_rows: List[Dict[str, float]] = []
+    for run_number in range(1, n_runs + 1):
+        seed = scenario.sim.seed + run_number - 1
+        log, _ = _simulate(scenario, seed)
+        if not log["t"]:
+            raise ValueError("The scenario must run for at least one simulation step")
+
+        run_rows.append({
+            "run": run_number,
+            "seed": seed,
+            "final_temp_C": log["T_true"][-1],
+            "mean_abs_error_C": statistics.mean(abs(error) for error in log["error"]),
+            "heater_duty_fraction": statistics.mean(log["heater"]),
+        })
+
+    metrics = ("final_temp_C", "mean_abs_error_C", "heater_duty_fraction")
+    summary_rows: List[Dict[str, object]] = []
+    for metric in metrics:
+        values = [row[metric] for row in run_rows]
+        summary_rows.append({
+            "record_type": "summary",
+            "statistic": f"{metric}_mean",
+            "value": statistics.mean(values),
+        })
+        summary_rows.append({
+            "record_type": "summary",
+            "statistic": f"{metric}_stddev",
+            "value": statistics.stdev(values) if len(values) > 1 else 0.0,
+        })
+        summary_rows.append({
+            "record_type": "summary",
+            "statistic": f"{metric}_p05",
+            "value": _percentile(values, 5),
+        })
+        summary_rows.append({
+            "record_type": "summary",
+            "statistic": f"{metric}_p95",
+            "value": _percentile(values, 95),
+        })
+
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    base = os.path.splitext(os.path.basename(scenario_path))[0]
+    log_dir = os.path.join("outputs", "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    csv_path = os.path.join(log_dir, f"{base}-monte-carlo-{n_runs}-{ts}.csv")
+    fieldnames = [
+        "record_type", "run", "seed", "final_temp_C", "mean_abs_error_C",
+        "heater_duty_fraction", "statistic", "value",
+    ]
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in run_rows:
+            writer.writerow({"record_type": "run", **row})
+        writer.writerows(summary_rows)
+
+    print(f"Wrote {n_runs} Monte Carlo runs and summary statistics to {csv_path}")

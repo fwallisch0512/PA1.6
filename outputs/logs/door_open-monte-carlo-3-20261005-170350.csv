@@ -1,0 +1,16 @@
+record_type,run,seed,final_temp_C,mean_abs_error_C,heater_duty_fraction,statistic,value
+run,1,321,20.491550497321725,0.39769534011566965,0.7023333333333334,,
+run,2,322,20.529843927672058,0.39643118127697746,0.706,,
+run,3,323,20.985376572165915,0.4054421966457757,0.7346666666666667,,
+summary,,,,,,final_temp_C_mean,20.6689236657199
+summary,,,,,,final_temp_C_stddev,0.27472427668591104
+summary,,,,,,final_temp_C_p05,20.495379840356758
+summary,,,,,,final_temp_C_p95,20.93982330771653
+summary,,,,,,mean_abs_error_C_mean,0.39985623934614095
+summary,,,,,,mean_abs_error_C_stddev,0.00487869999153135
+summary,,,,,,mean_abs_error_C_p05,0.3965575971608467
+summary,,,,,,mean_abs_error_C_p95,0.4046675109927651
+summary,,,,,,heater_duty_fraction_mean,0.7143333333333334
+summary,,,,,,heater_duty_fraction_stddev,0.01770436229985268
+summary,,,,,,heater_duty_fraction_p05,0.7027
+summary,,,,,,heater_duty_fraction_p95,0.7318
